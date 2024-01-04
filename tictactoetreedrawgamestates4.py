@@ -17,10 +17,11 @@ def get_board_state_index(board_state, move_num):
     else:
         return None
 
-games_2d = extrapolate_all_games([start_game], skill=6)
+# games = extrapolate_all_games([start_game], skill=6)
 #games = remove_near_duplicates(games)
-game_win_statuses = [check_win_status(game) for game in games_2d]
-games = [game.reshape((-1, 9)) for game in games_2d]
+# game_win_statuses = [check_win_status(game) for game in games_2d]
+games = [game.reshape((-1, 9)) for game in extrapolate_all_games([start_game], skill=5)]
+
 
 highlighted_games = [0]
 
@@ -67,8 +68,62 @@ def get_standard_board_state_index(board_state, move_num):
     else:
         return None
 
+# ---------------- Filter down games by paring down games that have the same standardized index sequence -------------
 
+games_state_indices = [tuple(get_standard_board_state_index(board_state, move_num)
+                              for move_num, board_state in enumerate(game))
+                        for game in games]
+
+pared_down_indices = []
+pared_down_games = []
+index_set = set()
+
+for game, state_index in zip(games, games_state_indices):
+    if state_index not in index_set:
+        pared_down_indices.append(state_index)
+        pared_down_games.append(game)
+        index_set.add(state_index)
             
+games = pared_down_games
+games_2d = [game.reshape((-1, 3, 3)) for game in games]
+game_win_statuses = [check_win_status(game_2d) for game_2d in games_2d]
+
+
+# ---------------- Filter down games by truncating dead-ends -------------
+
+def truncate_sequences(game_sequences, game_results):
+    prefix_map = {}
+
+    # Step 1: Create initial prefix map
+    for sequence, result in zip(game_sequences, game_results):
+        for i in range(1, len(sequence) + 1):
+            prefix = sequence[:i]
+            if prefix in prefix_map:
+                prefix_map[prefix].add(result)
+            else:
+                prefix_map[prefix] = {result}
+
+    # Step 2: Truncate sequences
+    truncated_sequences = {}
+    for sequence, result in zip(game_sequences, game_results):
+        for i in range(1, len(sequence) + 1):
+            prefix = sequence[:i]
+            if len(prefix_map[prefix]) == 1 and result in prefix_map[prefix]:
+                truncated_sequences[prefix] = result
+                break
+
+    return truncated_sequences
+
+
+truncated_sequence_dict = truncate_sequences(games_state_indices, game_win_statuses)
+
+for x in sorted(truncate_sequences(games_state_indices, game_win_statuses).items()):
+    print(x)
+
+print(len(truncated_sequence_dict))
+time.sleep(1)
+exit()
+
 # ------------------------- pygame setup ----------------------------
 
 import pygame

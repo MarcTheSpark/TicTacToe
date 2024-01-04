@@ -1,6 +1,7 @@
 """There are exactly 20 different* games of Tic-Tac-Toe"""
 
 import numpy as np
+from minimaz import get_best_moves
 
 
 def are_symmetrical(game1, game2):
@@ -142,6 +143,11 @@ def extrapolate_one_step(game, skill=0):
     Extrapolates next possible moves. If skill is 0, then any move is considered.
     If skill is 1, then we will at least take a win if it's available on our turn.
     If skill is 2, then we will avoid, if possible, giving our opponent a winning move.
+    If skill is 3, then we try to set up a 2 in a row, if possible
+    If skill is 4, then we try to do a fork if possible and if not try for 2 in a row
+    If skill is 5, then we do any move that is included in skill=3 or a minimax move
+    If skill is 6, then we do any move that is included in skill=4 or a minimax move
+    If skill is 7, then we do pure minimax play
     """
     extrapolated = []
     # Determine whose turn it is (1 for O's turn, -1 for X's turn)
@@ -151,16 +157,35 @@ def extrapolate_one_step(game, skill=0):
     winning_moves = find_winning_locations(current_board)
     player_wins, opponent_wins = winning_moves if whose_turn == 1 else winning_moves[::-1]
     
-    if skill > 0 and len(player_wins) > 0:
+    if skill >= 1 and len(player_wins) > 0:
         next_moves = player_wins
-    elif skill > 1 and len(opponent_wins) > 0:
+    elif skill >= 2 and len(opponent_wins) > 0:
         next_moves = opponent_wins
-    elif skill > 2:
-        good_plays = find_win_setup_locations(current_board, whose_turn, only_the_best=skill > 3)
-        if len(good_plays) > 0:
-            next_moves = good_plays
+    elif skill >= 3:
+        # using more "sophisticated" strategies
+        if skill >= 7:
+            # Perfect (minimax) skill (what does this mean exactly)
+            next_moves = get_best_moves(current_board)
+        elif skill >= 6:
+            # Minimax
+            minimax_next_moves = get_best_moves(current_board)
+            # Heuristic (fork if we can)
+            good_plays = find_win_setup_locations(current_board, whose_turn, only_the_best=True)
+            # mix of minimax and heuristic
+            next_moves = sorted(set(good_plays + minimax_next_moves))
+        elif skill >= 5:
+            # Minimax
+            minimax_next_moves = get_best_moves(current_board)
+            # Heuristic (fork if we can)
+            good_plays = find_win_setup_locations(current_board, whose_turn, only_the_best=False)
+            # mix of minimax and heuristic
+            next_moves = sorted(set(good_plays + minimax_next_moves))
         else:
-            next_moves = find_open_locations(current_board)
+            good_plays = find_win_setup_locations(current_board, whose_turn, only_the_best=skill >= 4)
+            if len(good_plays) > 0:
+                next_moves = good_plays
+            else:
+                next_moves = find_open_locations(current_board)
     else:
         next_moves = find_open_locations(current_board)
         
@@ -198,7 +223,7 @@ def prune_symmetrical_games(games_list):
     return games_list
 
 
-def extrapolate_all_games(unfinished_games, skill=0, prune_symmetrical=True):
+def extrapolate_all_games(unfinished_games, skill=0, prune_symmetrical=True, show_log=True):
     
     finished_games = []
     
@@ -208,7 +233,8 @@ def extrapolate_all_games(unfinished_games, skill=0, prune_symmetrical=True):
             finished_games.append(game)
                 
     while len(unfinished_games) > 0:
-        print(f"PRE: {len(unfinished_games)}, {len(finished_games)}")
+        if show_log:
+            print(f"PRE: {len(unfinished_games)}, {len(finished_games)}")
         unfinished_games = [
             extrapolated_game
             for game in unfinished_games
@@ -216,12 +242,14 @@ def extrapolate_all_games(unfinished_games, skill=0, prune_symmetrical=True):
             (prune_symmetrical_games(extrapolate_one_step(game, skill=skill))
              if prune_symmetrical else extrapolate_one_step(game, skill=skill)) 
         ]
-        print(f"EXTRAPOLATE: {len(unfinished_games)}, {len(finished_games)}")
+        if show_log:
+            print(f"EXTRAPOLATE: {len(unfinished_games)}, {len(finished_games)}")
         for i in reversed(range(len(unfinished_games))):
             if is_game_over(unfinished_games[i]):
                 finished_games.append(unfinished_games[i])
                 del unfinished_games[i]
-        print(f"PRUNE ENDED: {len(unfinished_games)}, {len(finished_games)}")
+        if show_log:
+            print(f"PRUNE ENDED: {len(unfinished_games)}, {len(finished_games)}")
     return finished_games
 
 
@@ -232,7 +260,6 @@ def remove_near_duplicates(games):
     :param games: A list of 3D NumPy arrays representing Tic-Tac-Toe games.
     :return: A list of games with near duplicates removed.
     """
-    unique_games = []
     indices_to_remove = set()
 
     for i in range(len(games)):
@@ -313,11 +340,17 @@ start_with_corner_middle = np.array(
 # games = extrapolate_all_games([start_with_center], skill=4)
 # games = remove_near_duplicates(games)
 
+
 def summarize_games(games):
     total_games = len(games)
     first_player_wins = len([x for x in games if check_win_status(x) == 1])
     second_player_wins = len([x for x in games if check_win_status(x) == -1])
     ties = len([x for x in games if check_win_status(x) == 0])
+    return total_games, first_player_wins, second_player_wins, ties
+
+
+def print_games_summary(games):
+    total_games, first_player_wins, second_player_wins, ties =  summarize_games(games)
     print(f"{total_games} total games")
     print(f"First player wins {first_player_wins} games ({first_player_wins/total_games:.1%})")
     print(f"Second player wins {second_player_wins} games ({second_player_wins/total_games:.1%})")

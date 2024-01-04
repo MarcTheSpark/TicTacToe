@@ -593,7 +593,7 @@ while running:
             last_texture_change = s.time()
             randomize_music()
             time.sleep(2.4)
-            with open("log.txt", "a") as f:
+            with open("old/log.txt", "a") as f:
                 f.write(f"{s.time()}\n")
         else:
             time.sleep(1)

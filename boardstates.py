@@ -2,6 +2,7 @@ from itertools import combinations
 import math
 import numpy as np
 
+
 def get_all_board_states_after_move_n(n):
     board_states = []
     num_x_moves = math.ceil(n/2)
@@ -13,7 +14,9 @@ def get_all_board_states_after_move_n(n):
                 1 if i in x_moves else -1 if i in o_moves else 0 for i in range(1, 10)]))
     return board_states
 
+
 all_board_states = [np.array(get_all_board_states_after_move_n(n)) for n in range(10)]
 
 if __name__ == '__main__':
+    print(all_board_states[0])
     print([len(x) for x in all_board_states])
