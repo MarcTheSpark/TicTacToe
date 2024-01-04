@@ -3,7 +3,7 @@ import numpy as np
 # ------------------------- board states ----------------------------
 
 from boardstates import all_board_states
-from tictactoe import extrapolate_all_games, remove_near_duplicates, start_game, start_with_center, check_win_status
+from game_extrapolation import extrapolate_all_games, remove_near_duplicates, start_game, start_with_center, check_win_status
 
 def get_board_state_index(board_state, move_num):
     if not isinstance(board_state, np.ndarray):

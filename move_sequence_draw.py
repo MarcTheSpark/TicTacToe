@@ -1,27 +1,26 @@
-# Pointing out that the branches are deceptive, because they don't represent the same board state
-# FOR EACH MOVE, MAKE Y Axis every possible board state after those moves.
-# That way we can see forking and branching paths
+from game_extrapolation import extrapolate_all_games, remove_near_duplicates
+from specific_games import start_game
+from utils import flat_format
 import numpy as np
-from boardstates import all_board_states
-from tictactoe import extrapolate_all_games, remove_near_duplicates, start_game
 
-def get_board_state_index(board_state, move_num):
-    if not isinstance(board_state, np.ndarray):
-        board_state = np.array(board_state)
-    this_move_states = all_board_states[move_num]
-    
-    matches = np.where(np.all(this_move_states == board_state, axis=1))[0]
-    if len(matches) > 0:
-        return matches[0]
-    else:
-        return None
 
-games = extrapolate_all_games([start_game], skill=2)
-games = [game.reshape((-1, 9)) for game in games]
+games = extrapolate_all_games([start_game], prune_symmetrical=False, skill=0)
 # games = remove_near_duplicates(games)
-print(games[20])
 
-# ---------------------------- DRAWING -------------------------------
+
+flattened = [flat_format(x) for x in games]
+move_sequences = [[int(np.argwhere(array[i] != array[i-1])[0]) + 1 for i in range(1, len(array))]
+                  for array in flattened]
+
+
+all_moves = {}
+for move_sequence in move_sequences:
+    current_move_dict = all_moves
+    for move in move_sequence:
+        if move not in current_move_dict:
+            current_move_dict[move] = {}
+        current_move_dict = current_move_dict[move]
+
 
 import pygame
 
@@ -31,7 +30,7 @@ MARGINS = 100, 100
 x_step = (SCREEN_DIM[0] - 2 * MARGINS[0]) / 8
 y_step = (SCREEN_DIM[1] - 2 * MARGINS[1]) / 8
 
-def draw_game(screen, move_dict, origin=None):
+def draw_move_lines(screen, move_dict, origin=None):
     if origin:
         for x in move_dict:
             endpoint = origin[0] + x_step, MARGINS[1] + (x - 1) * y_step

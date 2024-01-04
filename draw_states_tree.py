@@ -1,78 +1,26 @@
+from boardstates import BoardStatesList, get_standard_form
+from game_extrapolation import (extrapolate_all_games, remove_near_duplicates, start_game, start_with_center,
+                                check_win_status)
+from utils import tuple_format, square_format, get_move_sequence
 import numpy as np
 import time
 
-# ------------------------- board states ----------------------------
 
-from boardstates import all_board_states
-from tictactoe import extrapolate_all_games, remove_near_duplicates, start_game, start_with_center, check_win_status
-
-def get_board_state_index(board_state, move_num):
-    if not isinstance(board_state, np.ndarray):
-        board_state = np.array(board_state)
-    this_move_states = all_board_states[move_num]
-    
-    matches = np.where(np.all(this_move_states == board_state, axis=1))[0]
-    if len(matches) > 0:
-        return matches[0]
-    else:
-        return None
-
-# games = extrapolate_all_games([start_game], skill=6)
-#games = remove_near_duplicates(games)
-# game_win_statuses = [check_win_status(game) for game in games_2d]
-games = [game.reshape((-1, 9)) for game in extrapolate_all_games([start_game], skill=5)]
+STATES_OR_MOVES = True
 
 
-highlighted_games = [0]
+games = [tuple_format(game) for game in extrapolate_all_games([start_game], skill=5)]
 
-# filter out which states are actually used
+used_states = BoardStatesList.from_games(games)
+used_states_standard_forms = used_states.standard_forms_only()
 
-used_states = [[] for _ in range(10)]
-for game in games:
-    for i, state in enumerate(game):
-        used_states[i].append(get_board_state_index(state, i))
+games_state_indices = [tuple(used_states_standard_forms.get_state_index(get_standard_form(board_state))[1]
+                             for board_state in game)
+                       for game in games]
 
-
-all_board_states = [board_states[sorted(set(used_states[i]))] for i, board_states in enumerate(all_board_states)]
-
-
-def get_all_rotations_and_reflections(flattened_board_state):
-    regular_board_state = flattened_board_state.reshape((3, 3))
-    return [
-        np.flip(np.rot90(regular_board_state, rot, axes=(0, 1)), 1).flatten() if flip
-            else np.rot90(regular_board_state, rot, axes=(0, 1)).flatten()
-        for rot in range(4)
-        for flip in range(2)
-    ]
-
-
-def get_standard_form(board_state):
-    return min(get_all_rotations_and_reflections(board_state), key=lambda x: tuple(x))
-
-
-all_board_states_standard_form = []
-for board_states_after_n_moves in all_board_states:
-    standard_forms = [get_standard_form(board_state) for board_state in board_states_after_n_moves]
-    tuplified = map(tuple, standard_forms)
-    deduplicated = list(sorted(set(tuplified)))
-    all_board_states_standard_form.append(np.array([np.array(deduplicate) for deduplicate in deduplicated]))
-    
-
-def get_standard_board_state_index(board_state, move_num):
-    board_state = get_standard_form(np.array(board_state))
-    this_move_states = all_board_states_standard_form[move_num]
-    
-    matches = np.where(np.all(this_move_states == board_state, axis=1))[0]
-    if len(matches) > 0:
-        return matches[0]
-    else:
-        return None
+highlighted_games = [-1]
 
 # ---------------- Filter down games by paring down games that have the same standardized index sequence -------------
-
-games_state_indices = [tuple(get_standard_board_state_index(board_state, move_num)
-                              for move_num, board_state in enumerate(game))
-                        for game in games]
 
 pared_down_indices = []
 pared_down_games = []
@@ -83,48 +31,16 @@ for game, state_index in zip(games, games_state_indices):
         pared_down_indices.append(state_index)
         pared_down_games.append(game)
         index_set.add(state_index)
-            
+
+games_state_indices = pared_down_indices
 games = pared_down_games
-games_2d = [game.reshape((-1, 3, 3)) for game in games]
-game_win_statuses = [check_win_status(game_2d) for game_2d in games_2d]
 
+# --------------------------------- win statuses and game moves --------------------------------------
 
-# ---------------- Filter down games by truncating dead-ends -------------
+game_win_statuses = [check_win_status(game) for game in games]
+game_move_sequences = [get_move_sequence(game) for game in games]
 
-def truncate_sequences(game_sequences, game_results):
-    prefix_map = {}
-
-    # Step 1: Create initial prefix map
-    for sequence, result in zip(game_sequences, game_results):
-        for i in range(1, len(sequence) + 1):
-            prefix = sequence[:i]
-            if prefix in prefix_map:
-                prefix_map[prefix].add(result)
-            else:
-                prefix_map[prefix] = {result}
-
-    # Step 2: Truncate sequences
-    truncated_sequences = {}
-    for sequence, result in zip(game_sequences, game_results):
-        for i in range(1, len(sequence) + 1):
-            prefix = sequence[:i]
-            if len(prefix_map[prefix]) == 1 and result in prefix_map[prefix]:
-                truncated_sequences[prefix] = result
-                break
-
-    return truncated_sequences
-
-
-truncated_sequence_dict = truncate_sequences(games_state_indices, game_win_statuses)
-
-for x in sorted(truncate_sequences(games_state_indices, game_win_statuses).items()):
-    print(x)
-
-print(len(truncated_sequence_dict))
-time.sleep(1)
-exit()
-
-# ------------------------- pygame setup ----------------------------
+# ------------------------------ pygame ----------------------------------
 
 import pygame
 import pygame.draw
@@ -137,7 +53,7 @@ infoObject = pygame.display.Info()
 SCREEN_WIDTH, SCREEN_HEIGHT = infoObject.current_w, infoObject.current_h
 
 WORLD_WIDTH, WORLD_HEIGHT = 16, 9
-CELL_SIZE = SCREEN_WIDTH/16
+CELL_SIZE = SCREEN_WIDTH / 16
 
 # Zoom and pan variables
 zoom = 1
@@ -153,8 +69,10 @@ def world_to_screen(x, y):
     screen_y = y * CELL_SIZE * zoom + pan_y
     return int(screen_x), int(screen_y)
 
+
 def world_to_screen_width(width):
     return max(1, int(width * CELL_SIZE * zoom))
+
 
 # Wrapper for rect
 def world_rect(surface, color, world_rect, width=0, **kwargs):
@@ -164,17 +82,20 @@ def world_rect(surface, color, world_rect, width=0, **kwargs):
     )
     return pygame.draw.rect(surface, color, screen_rect, world_to_screen_width(width), **kwargs)
 
+
 # Wrapper for line
 def world_line(surface, color, start_pos, end_pos, width=1):
     screen_start = world_to_screen(*start_pos)
     screen_end = world_to_screen(*end_pos)
     return pygame.draw.line(surface, color, screen_start, screen_end, world_to_screen_width(width))
 
+
 # Wrapper for circle
 def world_circle(surface, color, center, radius, width=0, **kwargs):
     screen_center = world_to_screen(*center)
     screen_radius = radius * CELL_SIZE * zoom
     return pygame.draw.circle(surface, color, screen_center, screen_radius, world_to_screen_width(width), **kwargs)
+
 
 # Wrapper for ellipse
 def world_ellipse(surface, color, world_rect, width=0):
@@ -185,45 +106,11 @@ def world_ellipse(surface, color, world_rect, width=0):
     )
     return pygame.draw.ellipse(surface, color, screen_rect, width)
 
+
 # Wrapper for polygon
 def world_polygon(surface, color, points, width=0, **kwargs):
     screen_points = [world_to_screen(*point) for point in points]
     return pygame.draw.polygon(surface, color, screen_points, world_to_screen_width(width), **kwargs)
-
-
-# def calc_game_coords(game, draw_box):
-#     x_step = draw_box[2] / 9
-#     last_point = None
-#     game_coords = []
-#     for i, board_state in enumerate(game):
-#         y_step = draw_box[3] / len(all_board_states[i])
-#         this_point = draw_box[0] + i * x_step, draw_box[1] + get_board_state_index(board_state, i) * y_step
-#         game_coords.append(this_point)
-#     return game_coords
-
-def calc_game_coords(game, draw_box):
-    x_step = draw_box[2] / 9
-    last_point = None
-    game_coords = []
-    for i, board_state in enumerate(game):
-        y_step = draw_box[3] / len(all_board_states_standard_form[i])
-        this_point = draw_box[0] + i * x_step, draw_box[1] + get_standard_board_state_index(board_state, i) * y_step
-        game_coords.append(this_point)
-    return game_coords
-
-DRAW_BOX = (1, 0.5, 14, 8)
-all_game_coords = [calc_game_coords(game, DRAW_BOX) for game in games]
-
-
-def draw_game(game_coords, surface, color=(255, 255, 255), cap_color=(255, 255, 255), width=0.02):
-    last_point = None
-    for i, this_point in enumerate(game_coords):
-        if last_point:
-            world_line(surface, color, last_point, this_point, width=width)
-        world_ellipse(surface, color, (this_point[0] - 0.03, this_point[1] - 0.03, 0.06, 0.06))
-        last_point = this_point
-    world_ellipse(surface, cap_color, (this_point[0] - 0.03, this_point[1] - 0.03, 0.06, 0.06))
-    
 
 # ------------------ game animation -------------------------
 
@@ -237,6 +124,7 @@ BLACK = (0, 0, 0)
 O_COLOR = (0, 255, 0)
 X_COLOR = (255, 150, 50)
 
+
 def draw_board(x0, y0, width, height):
     square_size = width // BOARD_COLS
     screen.fill((0, 0, 0), rect=(x0, y0, width, height))
@@ -244,6 +132,7 @@ def draw_board(x0, y0, width, height):
         pygame.draw.line(screen, WHITE, (x0, y0 + row * square_size), (x0 + width, y0 + row * square_size), LINE_WIDTH)
     for col in range(1, BOARD_COLS):
         pygame.draw.line(screen, WHITE, (x0 + col * square_size, y0), (x0 + col * square_size, y0 + height), LINE_WIDTH)
+
 
 def draw_xo(game_state, x0, y0, width, height, winning_line=None, winning_player=None):
     square_size = width // BOARD_COLS
@@ -257,9 +146,13 @@ def draw_xo(game_state, x0, y0, width, height, winning_line=None, winning_player
                 color = X_COLOR if (winning_player == 1 and is_winning_square(row, col, winning_line)) else WHITE
                 margin = square_size * 0.1
                 pygame.draw.line(screen, color, (x0 + col * square_size + margin, y0 + row * square_size + margin),
-                                 (x0 + col * square_size + square_size - margin, y0 + row * square_size + square_size - margin), int(LINE_WIDTH * 1.2))
-                pygame.draw.line(screen, color, (x0 + col * square_size + margin, y0 + row * square_size + square_size - margin),
-                                 (x0 + col * square_size + square_size - margin, y0 + row * square_size + margin), int(LINE_WIDTH * 1.2))
+                                 (x0 + col * square_size + square_size - margin,
+                                  y0 + row * square_size + square_size - margin), int(LINE_WIDTH * 1.2))
+                pygame.draw.line(screen, color,
+                                 (x0 + col * square_size + margin, y0 + row * square_size + square_size - margin),
+                                 (x0 + col * square_size + square_size - margin, y0 + row * square_size + margin),
+                                 int(LINE_WIDTH * 1.2))
+
 
 def check_winner(game_state):
     # Check rows and columns
@@ -312,8 +205,8 @@ def roll_chord(inst, pitches, volume=1, spacing=0.07, length=1):
         wait(spacing)
         length_left -= spacing
     wait_for_children_to_finish()
-    
-    
+
+
 def animate_game(game, frame_dur):
     last_state = None
     for game_state in game:
@@ -326,16 +219,72 @@ def animate_game(game, frame_dur):
                 coords1, coords3 = winning_line
                 coords2 = ((coords1[0] + coords3[0]) / 2, (coords1[1] + coords3[1]) / 2)
                 chord = [coords_to_pitch(coord) for coord in (coords1, coords2, coords3)]
-                inst.play_chord(chord, [0.2, 1.0], frame_dur/3)
+                inst.play_chord(chord, [0.2, 1.0], frame_dur / 3)
             else:
                 inst = ohs if np.sum(delta) == -1 else exes
-                inst.play_note(coords_to_pitch(coords), 0.6, frame_dur/3)
+                inst.play_note(coords_to_pitch(coords), 0.6, frame_dur / 3)
         last_state = game_state
         draw_board(*ORIGIN, WIDTH, HEIGHT)
         draw_xo(game_state, *ORIGIN, WIDTH, HEIGHT, winning_line, winning_player)
         pygame.display.update()
         time.sleep(frame_dur)
-    time.sleep(frame_dur*2)
+    time.sleep(frame_dur * 2)
+
+
+# ------------------- line drawings ------------------------
+
+DRAW_BOX = (1, 0.5, 14, 8)
+
+
+def draw_game_state_sequence(state_sequence, surface, color=(255, 255, 255), cap_color=(255, 255, 255), width=0.02):
+    last_point = None
+    x_step = DRAW_BOX[2] / 9
+    for i, (game_state_index, num_states_this_move) in enumerate(zip(state_sequence, used_states_standard_forms.sizes_per_move())):
+        y_step = DRAW_BOX[3] / num_states_this_move
+        this_point = DRAW_BOX[0] + i * x_step, DRAW_BOX[1] + game_state_index * y_step
+        if last_point:
+            world_line(surface, color, last_point, this_point, width=width)
+        world_ellipse(surface, color, (this_point[0] - 0.03, this_point[1] - 0.03, 0.06, 0.06))
+        last_point = this_point
+    world_ellipse(surface, cap_color, (this_point[0] - 0.03, this_point[1] - 0.03, 0.06, 0.06))
+
+
+def draw_game_moves(moves, surface, color=(255, 255, 255), width=0.02):
+    last_point = None
+    x_step = DRAW_BOX[2] / 8
+    y_step = DRAW_BOX[3] / 8
+    for i, move in enumerate(moves):
+        this_point = DRAW_BOX[0] + i * x_step, DRAW_BOX[1] + DRAW_BOX[3] - move * y_step
+        if last_point:
+            world_line(surface, color, last_point, this_point, width=width)
+        world_ellipse(surface, color, (this_point[0] - 0.03, this_point[1] - 0.03, 0.06, 0.06))
+        last_point = this_point
+    world_ellipse(surface, color, (this_point[0] - 0.03, this_point[1] - 0.03, 0.06, 0.06))
+
+
+def draw_games(screen, states_or_moves=True):
+
+    highlights = []
+    for i, (move_sequence, this_game_indices, win_status) in enumerate(zip(game_move_sequences, games_state_indices, game_win_statuses)):
+        cap_color = (255, 100, 0) if win_status == 1 else \
+            (0, 100, 255) if win_status == -1 else \
+                (150, 150, 150)
+        if i in highlighted_games:
+            highlights.append((i, (move_sequence, this_game_indices, win_status)))
+            continue
+        if states_or_moves:
+            draw_game_state_sequence(this_game_indices, screen, cap_color=cap_color, width=0.005)
+        else:
+            draw_game_moves(move_sequence, screen, width=0.005)
+
+    for i, (move_sequence, this_game_indices, win_status) in highlights:
+        cap_color = (255, 100, 0) if win_status == 1 else \
+            (0, 100, 255) if win_status == -1 else \
+                (150, 150, 150)
+        if states_or_moves:
+            draw_game_state_sequence(this_game_indices, screen, color=(255, 255, 0), cap_color=cap_color, width=0.02)
+        else:
+            draw_game_moves(move_sequence, screen, color=(255, 255, 0), width=0.02)
 
 # ------------------- pygame main ---------------------------
 
@@ -354,16 +303,6 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-#         elif event.type == pygame.KEYDOWN:
-#             
-#             if event.key == pygame.K_UP:
-#                 highlighted_games[0] = 0
-#             elif event.key == pygame.K_DOWN:
-#                 highlighted_games[0] = len(games) - 1
-#             elif event.key == pygame.K_LEFT:
-#                 highlighted_games[0] = max(highlighted_games[0] - 1, -1)
-#             elif event.key == pygame.K_RIGHT:
-#                 highlighted_games[0] = min(highlighted_games[0] + 1, len(games) - 1)
 
         elif event.type == pygame.MOUSEWHEEL:
             if pygame.key.get_mods() & pygame.KMOD_CTRL:
@@ -406,30 +345,17 @@ while running:
         elif keys[pygame.K_RIGHT]:
             highlighted_games[0] = min(highlighted_games[0] + 1, len(games) - 1)
         elif keys[pygame.K_SPACE]:
-            animate_game(games_2d[highlighted_games[0]], 0.2)
+            animate_game(square_format(games[highlighted_games[0]]), 0.2)
         key_repeat_countdown = KEY_REPEAT_DELAY if key_repeat_countdown is None else KEY_REPEAT_INTERVAL
-    
+
     if key_repeat_countdown is not None:
         key_repeat_countdown -= dt
-    
+
     # Clear screen
     screen.fill((0, 0, 0))
 
-    highlights = []
-    for i, (game_coords, win_status) in enumerate(zip(all_game_coords, game_win_statuses)):
-        cap_color = (255, 100, 0) if win_status == 1 else \
-                    (0, 100, 255) if win_status == -1 else \
-                    (150, 150, 150)
-        if i in highlighted_games:
-            highlights.append((i, (game_coords, win_status)))
-            continue
-        draw_game(game_coords, screen, cap_color=cap_color, width=0.005)
-        
-    for i, (game_coords, win_status) in highlights:
-        cap_color = (255, 100, 0) if win_status == 1 else \
-                    (0, 100, 255) if win_status == -1 else \
-                    (150, 150, 150)
-        draw_game(game_coords, screen, color=(255, 255, 0), cap_color=cap_color, width=0.02)
+    # draw_games_state_tree(screen)
+    draw_games(screen, STATES_OR_MOVES)
 
     # Update the display
     pygame.display.flip()
