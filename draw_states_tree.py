@@ -1,3 +1,5 @@
+import dataclasses
+
 from boardstates import BoardStatesList, get_standard_form
 from game_extrapolation import (extrapolate_all_games, remove_near_duplicates, start_game, start_with_center,
                                 check_win_status)
@@ -6,10 +8,10 @@ import numpy as np
 import time
 
 
-STATES_OR_MOVES = True
+FRAME_DUR = 0.3
 
-
-games = [tuple_format(game) for game in extrapolate_all_games([start_game], skill=5)]
+games = [tuple_format(game) for game in extrapolate_all_games([start_game], skill=7)]
+# Start with center truncated vs non truncated is very interesting/revealing
 
 used_states = BoardStatesList.from_games(games)
 used_states_standard_forms = used_states.standard_forms_only()
@@ -39,6 +41,44 @@ games = pared_down_games
 
 game_win_statuses = [check_win_status(game) for game in games]
 game_move_sequences = [get_move_sequence(game) for game in games]
+
+
+# --------------------------------------- truncate ---------------------------------------------
+
+def truncate_sequences(game_sequences, game_results):
+    prefix_map = {}
+
+    # Step 1: Create initial prefix map
+    for sequence, result in zip(game_sequences, game_results):
+        for i in range(1, len(sequence) + 1):
+            prefix = sequence[:i]
+            if prefix in prefix_map:
+                prefix_map[prefix].add(result)
+            else:
+                prefix_map[prefix] = {result}
+
+    # Step 2: Truncate sequences
+    truncated_sequences = {}
+    for sequence, result in zip(game_sequences, game_results):
+        for i in range(1, len(sequence) + 1):
+            prefix = sequence[:i]
+            if len(prefix_map[prefix]) == 1 and result in prefix_map[prefix]:
+                truncated_sequences[prefix] = result
+                break
+
+    return truncated_sequences
+
+
+truncated_sequence_dict = truncate_sequences(games_state_indices, game_win_statuses)
+
+truncated_game_state_indices = list(truncated_sequence_dict.keys())
+truncated_game_win_statuses = list(truncated_sequence_dict.values())
+truncated_games = [used_states_standard_forms.index_sequence_to_board_sequence(truncated_game_state_index_sequence)
+                   for truncated_game_state_index_sequence in truncated_game_state_indices]
+
+original_game_stata_indices = games_state_indices
+original_game_win_statuses = game_win_statuses
+original_games = games
 
 # ------------------------------ pygame ----------------------------------
 
@@ -207,7 +247,28 @@ def roll_chord(inst, pitches, volume=1, spacing=0.07, length=1):
     wait_for_children_to_finish()
 
 
+@dataclasses.dataclass
+class GameAnimation:
+    game_state: np.ndarray
+    winning_line: tuple
+    winning_player: int
+
+    def draw(self):
+        draw_board(*ORIGIN, WIDTH, HEIGHT)
+        draw_xo(self.game_state, *ORIGIN, WIDTH, HEIGHT, self.winning_line, self.winning_player)
+
+        i, game_state_index = used_states_standard_forms.get_state_index(get_standard_form(self.game_state))
+        num_states_this_move = used_states_standard_forms.sizes_per_move()[i]
+        x_step, y_step = DRAW_BOX[2] / 9, DRAW_BOX[3] / num_states_this_move
+        this_point = DRAW_BOX[0] + i * x_step, DRAW_BOX[1] + game_state_index * y_step
+        world_ellipse(screen, (255, 255, 0), (this_point[0] - 0.07, this_point[1] - 0.07, 0.14, 0.14))
+
+
+game_animation: GameAnimation = None
+
+
 def animate_game(game, frame_dur):
+    global game_animation
     last_state = None
     for game_state in game:
         winning_line, winning_player = check_winner(game_state)
@@ -224,11 +285,11 @@ def animate_game(game, frame_dur):
                 inst = ohs if np.sum(delta) == -1 else exes
                 inst.play_note(coords_to_pitch(coords), 0.6, frame_dur / 3)
         last_state = game_state
-        draw_board(*ORIGIN, WIDTH, HEIGHT)
-        draw_xo(game_state, *ORIGIN, WIDTH, HEIGHT, winning_line, winning_player)
-        pygame.display.update()
-        time.sleep(frame_dur)
-    time.sleep(frame_dur * 2)
+        game_animation = GameAnimation(game_state, winning_line, winning_player)
+
+        wait(frame_dur)
+    wait(frame_dur * 2)
+    game_animation = None
 
 
 # ------------------- line drawings ------------------------
@@ -246,45 +307,26 @@ def draw_game_state_sequence(state_sequence, surface, color=(255, 255, 255), cap
             world_line(surface, color, last_point, this_point, width=width)
         world_ellipse(surface, color, (this_point[0] - 0.03, this_point[1] - 0.03, 0.06, 0.06))
         last_point = this_point
-    world_ellipse(surface, cap_color, (this_point[0] - 0.03, this_point[1] - 0.03, 0.06, 0.06))
+    world_ellipse(surface, cap_color, (this_point[0] - 0.05, this_point[1] - 0.05, 0.1, 0.1))
 
 
-def draw_game_moves(moves, surface, color=(255, 255, 255), width=0.02):
-    last_point = None
-    x_step = DRAW_BOX[2] / 8
-    y_step = DRAW_BOX[3] / 8
-    for i, move in enumerate(moves):
-        this_point = DRAW_BOX[0] + i * x_step, DRAW_BOX[1] + DRAW_BOX[3] - move * y_step
-        if last_point:
-            world_line(surface, color, last_point, this_point, width=width)
-        world_ellipse(surface, color, (this_point[0] - 0.03, this_point[1] - 0.03, 0.06, 0.06))
-        last_point = this_point
-    world_ellipse(surface, color, (this_point[0] - 0.03, this_point[1] - 0.03, 0.06, 0.06))
-
-
-def draw_games(screen, states_or_moves=True):
-
+def draw_games(screen):
     highlights = []
-    for i, (move_sequence, this_game_indices, win_status) in enumerate(zip(game_move_sequences, games_state_indices, game_win_statuses)):
-        cap_color = (255, 100, 0) if win_status == 1 else \
-            (0, 100, 255) if win_status == -1 else \
-                (150, 150, 150)
+    for i, (this_game_indices, win_status) in enumerate(zip(games_state_indices, game_win_statuses)):
+        cap_color = (255, 150, 50) if win_status == 1 else \
+            (0, 255, 0) if win_status == -1 else \
+            (255, 255, 255)
         if i in highlighted_games:
-            highlights.append((i, (move_sequence, this_game_indices, win_status)))
+            highlights.append((i, (this_game_indices, win_status)))
             continue
-        if states_or_moves:
-            draw_game_state_sequence(this_game_indices, screen, cap_color=cap_color, width=0.005)
-        else:
-            draw_game_moves(move_sequence, screen, width=0.005)
+        draw_game_state_sequence(this_game_indices, screen, cap_color=cap_color, width=0.005)
 
-    for i, (move_sequence, this_game_indices, win_status) in highlights:
-        cap_color = (255, 100, 0) if win_status == 1 else \
-            (0, 100, 255) if win_status == -1 else \
-                (150, 150, 150)
-        if states_or_moves:
-            draw_game_state_sequence(this_game_indices, screen, color=(255, 255, 0), cap_color=cap_color, width=0.02)
-        else:
-            draw_game_moves(move_sequence, screen, color=(255, 255, 0), width=0.02)
+    for i, (this_game_indices, win_status) in highlights:
+        cap_color = (255, 150, 50) if win_status == 1 else \
+            (0, 255, 0) if win_status == -1 else \
+                (255, 255, 255)
+        draw_game_state_sequence(this_game_indices, screen, color=(255, 255, 0), cap_color=cap_color, width=0.02)
+
 
 # ------------------- pygame main ---------------------------
 
@@ -344,8 +386,20 @@ while running:
             highlighted_games[0] = max(highlighted_games[0] - 1, -1)
         elif keys[pygame.K_RIGHT]:
             highlighted_games[0] = min(highlighted_games[0] + 1, len(games) - 1)
+        elif keys[pygame.K_t]:
+            if games_state_indices == original_game_stata_indices:
+                games_state_indices = truncated_game_state_indices
+                game_win_statuses = truncated_game_win_statuses
+                games = truncated_games
+                highlighted_games = [-1]
+            else:
+                games_state_indices = original_game_stata_indices
+                game_win_statuses = original_game_win_statuses
+                games = original_games
+                highlighted_games = [-1]
+
         elif keys[pygame.K_SPACE]:
-            animate_game(square_format(games[highlighted_games[0]]), 0.2)
+            s.fork(animate_game, (square_format(games[highlighted_games[0]]), FRAME_DUR))
         key_repeat_countdown = KEY_REPEAT_DELAY if key_repeat_countdown is None else KEY_REPEAT_INTERVAL
 
     if key_repeat_countdown is not None:
@@ -355,7 +409,10 @@ while running:
     screen.fill((0, 0, 0))
 
     # draw_games_state_tree(screen)
-    draw_games(screen, STATES_OR_MOVES)
+    draw_games(screen)
+
+    if game_animation:
+        game_animation.draw()
 
     # Update the display
     pygame.display.flip()

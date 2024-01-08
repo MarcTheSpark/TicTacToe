@@ -35,7 +35,7 @@ def get_all_board_states_after_move_n(n):
 class BoardStatesList:
 
     def __init__(self, board_states_after_each_move):
-        self.board_states = [tuple_format(sorted(x)) for x in board_states_after_each_move]
+        self.board_states = [[tuple_format(board) for board in sorted(x)] for x in board_states_after_each_move]
         while len(self.board_states) < 10:
             self.board_states.append([])
 
@@ -71,6 +71,9 @@ class BoardStatesList:
             return move_num, this_move_states.index(board_state)
         except ValueError:
             return None
+
+    def index_sequence_to_board_sequence(self, state_sequence):
+        return [self.board_states[i][state_num] for i, state_num in enumerate(state_sequence)]
 
     @classmethod
     def complete(cls):
