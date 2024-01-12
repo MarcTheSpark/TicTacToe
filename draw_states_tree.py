@@ -8,10 +8,10 @@ import numpy as np
 import time
 
 
-FRAME_DUR = 0.3
+FRAME_DUR = 0.18
 
 games = [tuple_format(game) for game in extrapolate_all_games([start_game], skill=7)]
-# Start with center truncated vs non truncated is very interesting/revealing
+# Start with center truncated vs non-truncated is very interesting/revealing
 
 used_states = BoardStatesList.from_games(games)
 used_states_standard_forms = used_states.standard_forms_only()
@@ -284,8 +284,8 @@ def animate_game(game, frame_dur):
             else:
                 inst = ohs if np.sum(delta) == -1 else exes
                 inst.play_note(coords_to_pitch(coords), 0.6, frame_dur / 3)
+            game_animation = GameAnimation(game_state, winning_line, winning_player)
         last_state = game_state
-        game_animation = GameAnimation(game_state, winning_line, winning_player)
 
         wait(frame_dur)
     wait(frame_dur * 2)

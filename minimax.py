@@ -88,7 +88,7 @@ def get_all_rotations_and_reflections(square_board):
 
 if __name__ == '__main__':
     best_moves_dict = {}
-    for i, states_after_move_n in enumerate(boardstates.all_board_states):
+    for i, states_after_move_n in enumerate(boardstates.BoardStatesList.complete().board_states):
         for state in tuple_format(states_after_move_n):
             best_moves_dict[state] = calc_best_moves(state, 1 if i % 2 == 0 else -1)
     with open('minimax.pickle', 'wb') as handle:
@@ -105,4 +105,6 @@ def get_best_moves(board):
     next_move_indices = [int(np.where(next_move != board)[0]) for next_move in next_moves]
     return [divmod(x, 3) for x in next_move_indices]
 
-print(get_best_moves((1, 0, 0, 0, 0, 0, 0, 0, 0)))
+
+if __name__ == '__main__':
+    print(get_best_moves((0, 1, 0, -1, 0, 0, 0, 0, 0)))

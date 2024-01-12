@@ -1,7 +1,7 @@
 from itertools import combinations
 import math
 import numpy as np
-from utils import flat_format, square_format, tuple_format
+from utils import square_format, tuple_format
 
 
 def get_all_rotations_and_reflections(board_state: tuple):

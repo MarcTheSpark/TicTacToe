@@ -4,8 +4,8 @@ from utils import flat_format
 import numpy as np
 
 
-games = extrapolate_all_games([start_game], prune_symmetrical=False, skill=0)
-# games = remove_near_duplicates(games)
+games = extrapolate_all_games([start_game], prune_symmetrical=True, skill=4)
+games = remove_near_duplicates(games)
 
 
 flattened = [flat_format(x) for x in games]
@@ -22,6 +22,8 @@ for move_sequence in move_sequences:
         current_move_dict = current_move_dict[move]
 
 
+# -------------------------- Pygame script -------------------------------
+
 import pygame
 
 SCREEN_DIM = 1920, 1080
@@ -29,6 +31,7 @@ MARGINS = 100, 100
 
 x_step = (SCREEN_DIM[0] - 2 * MARGINS[0]) / 8
 y_step = (SCREEN_DIM[1] - 2 * MARGINS[1]) / 8
+
 
 def draw_move_lines(screen, move_dict, origin=None):
     if origin:
@@ -65,6 +68,7 @@ def main():
         pygame.display.flip()
 
     pygame.quit()
+
 
 if __name__ == "__main__":
     main()

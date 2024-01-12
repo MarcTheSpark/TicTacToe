@@ -1,14 +1,14 @@
 import pygame
 import numpy as np
 import time
-from specific_games import start_with_center
+from specific_games import start_with_center, start_game
 from game_extrapolation import extrapolate_all_games, remove_near_duplicates
 from scamp import Session, wait, wait_for_children_to_finish
 
 
 the_20_games = extrapolate_all_games([start_with_center], skill=4)
 the_14_games = remove_near_duplicates(the_20_games)
-game_iter = iter(the_14_games)
+games = the_14_games
 
 # # One random game
 # game = np.array(
@@ -165,8 +165,8 @@ def animate_game(all_games, frame_dur):
                 coords1, coords3 = winning_line
                 coords2 = ((coords1[0] + coords3[0]) / 2, (coords1[1] + coords3[1]) / 2)
                 chord = [coords_to_pitch(coord) for coord in (coords1, coords2, coords3)]
-                #                 inst.play_chord(chord, [0.2, 1.0], frame_dur/3)]
-                s.fork(roll_chord, (inst, chord, 0.7))
+                inst.play_chord(chord, [0.2, 1.0], frame_dur/3)
+                # s.fork(roll_chord, (inst, chord, 0.7))
             else:
                 inst = ohs if np.sum(delta) == -1 else exes
                 inst.play_note(coords_to_pitch(coords), 0.6, frame_dur / 3)
@@ -177,15 +177,13 @@ def animate_game(all_games, frame_dur):
         time.sleep(frame_dur)
 
 
-# Main loop
-running = True
-while running:
+for game in games:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            running = False
+            break
 
     # Start the animation (adjust frame_dur as needed)
-    animate_game(next(game_iter), frame_dur=0.4)
-    time.sleep(1)
+    animate_game(game, frame_dur=0.2)
+    time.sleep(0.6)
 
 pygame.quit()
